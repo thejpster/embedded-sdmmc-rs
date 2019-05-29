@@ -10,6 +10,8 @@
 //
 // ****************************************************************************
 
+use core::cell::RefCell;
+
 use byteorder::{ByteOrder, LittleEndian};
 
 #[macro_use]
@@ -87,8 +89,8 @@ where
 {
     block_device: D,
     timesource: T,
-    open_dirs: [(VolumeIdx, Cluster); MAX_OPEN_DIRS],
-    open_files: [(VolumeIdx, Cluster); MAX_OPEN_DIRS],
+    open_dirs: RefCell<[(VolumeIdx, Cluster); MAX_OPEN_DIRS]>,
+    open_files: RefCell<[(VolumeIdx, Cluster); MAX_OPEN_DIRS]>,
 }
 
 /// Represents a partition with a filesystem within it.
@@ -164,8 +166,8 @@ where
         Controller {
             block_device,
             timesource,
-            open_dirs: [(VolumeIdx(0), Cluster::INVALID); 4],
-            open_files: [(VolumeIdx(0), Cluster::INVALID); 4],
+            open_dirs: RefCell::new([(VolumeIdx(0), Cluster::INVALID); 4]),
+            open_files: RefCell::new([(VolumeIdx(0), Cluster::INVALID); 4]),
         }
     }
 
@@ -178,7 +180,7 @@ where
     /// Record. We do not support GUID Partition Table disks. Nor do we
     /// support any concept of drive letters - that is for a higher layer to
     /// handle.
-    pub fn get_volume(&mut self, volume_idx: VolumeIdx) -> Result<Volume, Error<D::Error>> {
+    pub fn get_volume(&self, volume_idx: VolumeIdx) -> Result<Volume, Error<D::Error>> {
         const PARTITION1_START: usize = 446;
         const PARTITION2_START: usize = PARTITION1_START + PARTITION_INFO_LENGTH;
         const PARTITION3_START: usize = PARTITION2_START + PARTITION_INFO_LENGTH;
@@ -258,7 +260,7 @@ where
         // we already know the root dir's magic cluster number, we can do both
         // checks in one loop.
         let mut open_dirs_row = None;
-        for (i, d) in self.open_dirs.iter().enumerate() {
+        for (i, d) in self.open_dirs.borrow().iter().enumerate() {
             if *d == (volume.idx, Cluster::ROOT_DIR) {
                 return Err(Error::DirAlreadyOpen);
             }
@@ -269,7 +271,7 @@ where
         }
         let open_dirs_row = open_dirs_row.ok_or(Error::TooManyOpenDirs)?;
         // Remember this open directory
-        self.open_dirs[open_dirs_row] = (volume.idx, Cluster::ROOT_DIR);
+        self.open_dirs.borrow_mut()[open_dirs_row] = (volume.idx, Cluster::ROOT_DIR);
         Ok(Directory {
             cluster: Cluster::ROOT_DIR,
         })
@@ -282,14 +284,14 @@ where
     /// this directory handle is open. In particular, stop this directory
     /// being unlinked.
     pub fn open_dir(
-        &mut self,
+        &self,
         volume: &Volume,
         parent_dir: &Directory,
         name: &str,
     ) -> Result<Directory, Error<D::Error>> {
         // Find a free open directory table row
         let mut open_dirs_row = None;
-        for (i, d) in self.open_dirs.iter().enumerate() {
+        for (i, d) in self.open_dirs.borrow().iter().enumerate() {
             if d.1 == Cluster::INVALID {
                 open_dirs_row = Some(i);
             }
@@ -307,13 +309,13 @@ where
         }
 
         // Check it's not already open
-        for (_i, dir_table_row) in self.open_dirs.iter().enumerate() {
+        for (_i, dir_table_row) in self.open_dirs.borrow().iter().enumerate() {
             if *dir_table_row == (volume.idx, dir_entry.cluster) {
                 return Err(Error::DirAlreadyOpen);
             }
         }
         // Remember this open directory
-        self.open_dirs[open_dirs_row] = (volume.idx, dir_entry.cluster);
+        self.open_dirs.borrow_mut()[open_dirs_row] = (volume.idx, dir_entry.cluster);
         Ok(Directory {
             cluster: dir_entry.cluster,
         })
@@ -323,7 +325,7 @@ where
     /// and so must close it if you want to do something with it.
     pub fn close_dir(&mut self, volume: &Volume, dir: Directory) {
         let target = (volume.idx, dir.cluster);
-        for d in self.open_dirs.iter_mut() {
+        for d in self.open_dirs.borrow_mut().iter_mut() {
             if *d == target {
                 d.1 = Cluster::INVALID;
                 break;
@@ -334,7 +336,7 @@ where
 
     /// Look in a directory for a named file.
     pub fn find_directory_entry(
-        &mut self,
+        &self,
         volume: &Volume,
         dir: &Directory,
         name: &str,
@@ -347,7 +349,7 @@ where
 
     /// Call a callback function for each directory entry in a directory.
     pub fn iterate_dir<F>(
-        &mut self,
+        &self,
         volume: &Volume,
         dir: &Directory,
         func: F,
@@ -362,20 +364,20 @@ where
     }
 
     /// Open a file with the given full path. A file can only be opened once.
-    pub fn open_file_in_dir(
-        &mut self,
-        volume: &Volume,
+    pub fn open_file_in_dir<'a>(
+        &'a self,
+        volume: &'a Volume,
         dir: &Directory,
         name: &str,
         mode: Mode,
-    ) -> Result<File, Error<D::Error>> {
+    ) -> Result<File<'a, D, T>, Error<D::Error>> {
         if mode != Mode::ReadOnly {
             // Only read-only for now
             return Err(Error::Unsupported);
         }
         // Find a free directory entry
         let mut open_files_row = None;
-        for (i, d) in self.open_files.iter().enumerate() {
+        for (i, d) in self.open_files.borrow().iter().enumerate() {
             if d.1 == Cluster::INVALID {
                 open_files_row = Some(i);
             }
@@ -391,27 +393,27 @@ where
         }
 
         // Check it's not already open
-        for dir_table_row in self.open_files.iter() {
+        for dir_table_row in self.open_files.borrow().iter() {
             if *dir_table_row == (volume.idx, dir_entry.cluster) {
                 return Err(Error::DirAlreadyOpen);
             }
         }
         // Remember this open file
-        self.open_files[open_files_row] = (volume.idx, dir_entry.cluster);
-        Ok(File {
-            starting_cluster: dir_entry.cluster,
-            current_cluster: (0, dir_entry.cluster),
-            current_offset: 0,
-            length: dir_entry.size,
+        self.open_files.borrow_mut()[open_files_row] = (volume.idx, dir_entry.cluster);
+        Ok(File::new(
+            self,
+            volume,
+            dir_entry.cluster,
+            dir_entry.size,
             mode,
-        })
+        ))
     }
 
     /// Read from an open file.
-    pub fn read(
-        &mut self,
+    pub fn read<'a>(
+        &'a self,
         volume: &Volume,
-        file: &mut File,
+        file: &mut File<'a, D, T>,
         buffer: &mut [u8],
     ) -> Result<usize, Error<D::Error>> {
         // Calculate which file block the current offset lies within
@@ -421,8 +423,8 @@ where
         let mut read = 0;
         while space > 0 && !file.eof() {
             let (block_idx, block_offset, block_avail, resume_from) =
-                self.find_data_on_disk(volume, file.current_cluster, file.current_offset)?;
-            file.current_cluster = resume_from;
+                self.find_data_on_disk(volume, file.get_current_cluster(), file.get_current_offset())?;
+            file.set_current_cluster(resume_from.0, resume_from.1);
             let mut blocks = [Block::new()];
             self.block_device
                 .read(&mut blocks, block_idx, "read")
@@ -439,16 +441,17 @@ where
         Ok(read)
     }
 
-    /// Close a file with the given full path.
-    pub fn close_file(&mut self, volume: &Volume, file: File) -> Result<(), Error<D::Error>> {
-        let target = (volume.idx, file.starting_cluster);
-        for d in self.open_files.iter_mut() {
+    /// Close the given file handle. This should only be used by the `Drop`
+    /// implementation on `File`, as the file handle will still exist after
+    /// this function but will no longer work.
+    pub(crate) fn close_file_by_ref<'a>(&self, volume: &Volume, file: &mut File<'a, D, T>) -> Result<(), Error<D::Error>> {
+        let target = (volume.idx, file.get_starting_cluster());
+        for d in self.open_files.borrow_mut().iter_mut() {
             if *d == target {
                 d.1 = Cluster::INVALID;
                 break;
             }
         }
-        drop(file);
         Ok(())
     }
 
@@ -456,7 +459,7 @@ where
     /// read. It either calculates this based on the start of the file, or
     /// from the last cluster we read - whichever is better.
     fn find_data_on_disk(
-        &mut self,
+        &self,
         volume: &Volume,
         mut start: (u32, Cluster),
         desired_offset: u32,

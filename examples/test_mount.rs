@@ -157,7 +157,7 @@ fn main() {
             assert!(controller
                 .open_file_in_dir(&volume, &root_dir, FILE_TO_PRINT, Mode::ReadOnly)
                 .is_err());
-            controller.close_file(&volume, f).unwrap();
+            drop(f);
 
             let test_dir = controller.open_dir(&volume, &root_dir, "TEST").unwrap();
             // Check we can't open it twice
@@ -186,7 +186,7 @@ fn main() {
                 }
             }
             println!("Checksum over {} bytes: {}", f.length(), csum);
-            controller.close_file(&volume, f).unwrap();
+            drop(f);
 
             assert!(controller.open_root_dir(&volume).is_err());
             controller.close_dir(&volume, root_dir);

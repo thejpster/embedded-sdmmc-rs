@@ -360,7 +360,7 @@ impl Fat16Volume {
     /// Get an entry from the FAT
     fn get_fat<D, T>(
         &self,
-        controller: &mut Controller<D, T>,
+        controller: &Controller<D, T>,
         cluster: Cluster,
     ) -> Result<Cluster, Error<D::Error>>
     where
@@ -383,7 +383,7 @@ impl Fat16Volume {
     /// Write a new entry in the FAT
     fn update_fat<D, T>(
         &mut self,
-        controller: &mut Controller<D, T>,
+        controller: &Controller<D, T>,
         cluster: Cluster,
         new_value: Cluster,
     ) -> Result<(), Error<D::Error>>
@@ -419,7 +419,7 @@ impl Fat16Volume {
     /// Look in the FAT to see which cluster comes next.
     pub(crate) fn next_cluster<D, T>(
         &self,
-        controller: &mut Controller<D, T>,
+        controller: &Controller<D, T>,
         cluster: Cluster,
     ) -> Result<Cluster, Error<D::Error>>
     where
@@ -476,7 +476,7 @@ impl Fat16Volume {
     /// Get an entry from the given directory
     pub(crate) fn find_directory_entry<D, T>(
         &self,
-        controller: &mut Controller<D, T>,
+        controller: &Controller<D, T>,
         dir: &Directory,
         name: &str,
     ) -> Result<DirEntry, Error<D::Error>>
@@ -565,7 +565,7 @@ impl Fat32Volume {
     /// Get an entry from the FAT
     fn get_fat<D, T>(
         &self,
-        controller: &mut Controller<D, T>,
+        controller: &Controller<D, T>,
         cluster: Cluster,
     ) -> Result<Cluster, Error<D::Error>>
     where
@@ -590,7 +590,7 @@ impl Fat32Volume {
     /// Write a new entry in the FAT
     fn update_fat<D, T>(
         &mut self,
-        controller: &mut Controller<D, T>,
+        controller: &Controller<D, T>,
         cluster: Cluster,
         new_value: Cluster,
     ) -> Result<(), Error<D::Error>>
@@ -630,7 +630,7 @@ impl Fat32Volume {
     /// Look in the FAT to see which cluster comes next.
     pub(crate) fn next_cluster<D, T>(
         &self,
-        controller: &mut Controller<D, T>,
+        controller: &Controller<D, T>,
         cluster: Cluster,
     ) -> Result<Cluster, Error<D::Error>>
     where
@@ -690,7 +690,7 @@ impl Fat32Volume {
     /// Get an entry from the given directory
     pub(crate) fn find_directory_entry<D, T>(
         &self,
-        controller: &mut Controller<D, T>,
+        controller: &Controller<D, T>,
         dir: &Directory,
         name: &str,
     ) -> Result<DirEntry, Error<D::Error>>
@@ -764,7 +764,7 @@ impl Fat32Volume {
 /// Load the boot parameter block from the start of the given partition and
 /// determine if the partition contains a valid FAT16 or FAT32 file system.
 pub fn parse_volume<D, T>(
-    controller: &mut Controller<D, T>,
+    controller: &Controller<D, T>,
     lba_start: BlockIdx,
     num_blocks: BlockCount,
 ) -> Result<VolumeType, Error<D::Error>>

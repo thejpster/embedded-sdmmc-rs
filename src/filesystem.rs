@@ -77,18 +77,21 @@ pub struct Timestamp {
 pub struct Attributes(u8);
 
 /// Represents an open file on disk.
-#[derive(Debug)]
-pub struct File {
+pub struct File<'a, D, T> where D: crate::blockdevice::BlockDevice, T: TimeSource {
+    /// Our parent controller
+    controller: &'a super::Controller<D, T>,
+    /// Our parent volume
+    volume: &'a super::Volume,
     /// The starting point of the file.
-    pub(crate) starting_cluster: Cluster,
+    starting_cluster: Cluster,
     /// The current cluster, and how many bytes that short-cuts us
-    pub(crate) current_cluster: (u32, Cluster),
+    current_cluster: (u32, Cluster),
     /// How far through the file we've read (in bytes).
-    pub(crate) current_offset: u32,
+    current_offset: u32,
     /// The length of the file, in bytes.
-    pub(crate) length: u32,
+    length: u32,
     /// What mode the file was opened in
-    pub(crate) mode: Mode,
+    mode: Mode,
 }
 
 /// Represents an open directory on disk.
@@ -516,10 +519,12 @@ impl core::fmt::Debug for Attributes {
     }
 }
 
-impl File {
+impl<'a, T, D> File<'a, D, T> where D: crate::blockdevice::BlockDevice, T: TimeSource {
     /// Create a new file handle.
-    pub(crate) fn new(cluster: Cluster, length: u32, mode: Mode) -> File {
+    pub(crate) fn new(controller: &'a super::Controller<D, T>, volume: &'a super::Volume, cluster: Cluster, length: u32, mode: Mode) -> File<'a, D, T> {
         File {
+            controller,
+            volume,
             starting_cluster: cluster,
             current_cluster: (0, cluster),
             mode,
@@ -536,6 +541,26 @@ impl File {
     /// How long is the file?
     pub fn length(&self) -> u32 {
         self.length
+    }
+
+    /// Where does this file start on disk
+    pub fn get_starting_cluster(&self) -> Cluster {
+        self.starting_cluster
+    }
+
+    /// Where is the file pointing
+    pub fn get_current_cluster(&self) -> (u32, Cluster) {
+        self.current_cluster
+    }
+
+    /// Where is the file pointing
+    pub fn set_current_cluster(&mut self, offset: u32, cluster: Cluster) {
+        self.current_cluster = (offset, cluster);
+    }
+
+    /// How far through the file are we?
+    pub fn get_current_offset(&self) -> u32 {
+        self.current_offset
     }
 
     /// Seek to a new position in the file, relative to the start of the file.
@@ -580,6 +605,13 @@ impl File {
     /// Amount of file left to read.
     pub fn left(&self) -> u32 {
         self.length - self.current_offset
+    }
+}
+
+impl<'a, D, T> Drop for File<'a, D, T> where D: crate::blockdevice::BlockDevice, T: TimeSource {
+    fn drop(&mut self) {
+        // TODO - is panic the best course of action here?
+        self.controller.close_file_by_ref(self.volume, self).expect("Failed to close file when handled dropped.");
     }
 }
 
