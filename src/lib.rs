@@ -255,7 +255,10 @@ where
     /// TODO: Work out how to prevent damage occuring to the file system while
     /// this directory handle is open. In particular, stop this directory
     /// being unlinked.
-    pub fn open_root_dir(&mut self, volume: &Volume) -> Result<Directory, Error<D::Error>> {
+    pub fn open_root_dir<'a>(
+        &'a self,
+        volume: &'a Volume,
+    ) -> Result<Directory<'a, D, T>, Error<D::Error>> {
         // Find a free directory entry, and check the root dir isn't open. As
         // we already know the root dir's magic cluster number, we can do both
         // checks in one loop.
@@ -272,9 +275,7 @@ where
         let open_dirs_row = open_dirs_row.ok_or(Error::TooManyOpenDirs)?;
         // Remember this open directory
         self.open_dirs.borrow_mut()[open_dirs_row] = (volume.idx, Cluster::ROOT_DIR);
-        Ok(Directory {
-            cluster: Cluster::ROOT_DIR,
-        })
+        Ok(Directory::new(self, volume, Cluster::ROOT_DIR))
     }
 
     /// Open a directory. You can then read the directory entries in a random
@@ -283,12 +284,12 @@ where
     /// TODO: Work out how to prevent damage occuring to the file system while
     /// this directory handle is open. In particular, stop this directory
     /// being unlinked.
-    pub fn open_dir(
-        &self,
-        volume: &Volume,
-        parent_dir: &Directory,
+    pub fn open_dir<'a>(
+        &'a self,
+        volume: &'a Volume,
+        parent_dir: &Directory<D, T>,
         name: &str,
-    ) -> Result<Directory, Error<D::Error>> {
+    ) -> Result<Directory<'a, D, T>, Error<D::Error>> {
         // Find a free open directory table row
         let mut open_dirs_row = None;
         for (i, d) in self.open_dirs.borrow().iter().enumerate() {
@@ -316,14 +317,14 @@ where
         }
         // Remember this open directory
         self.open_dirs.borrow_mut()[open_dirs_row] = (volume.idx, dir_entry.cluster);
-        Ok(Directory {
-            cluster: dir_entry.cluster,
-        })
+        Ok(Directory::new(self, volume, dir_entry.cluster))
     }
 
     /// Close a directory. You cannot perform operations on an open directory
-    /// and so must close it if you want to do something with it.
-    pub fn close_dir(&mut self, volume: &Volume, dir: Directory) {
+    /// and so must close it if you want to do something with it. Note, do not
+    /// use the Directory handle after this function has been called. It's
+    /// really only for the drop impl on Directory.
+    pub fn close_dir_by_ref(&self, volume: &Volume, dir: &mut Directory<D, T>) {
         let target = (volume.idx, dir.cluster);
         for d in self.open_dirs.borrow_mut().iter_mut() {
             if *d == target {
@@ -331,14 +332,13 @@ where
                 break;
             }
         }
-        drop(dir);
     }
 
     /// Look in a directory for a named file.
     pub fn find_directory_entry(
         &self,
         volume: &Volume,
-        dir: &Directory,
+        dir: &Directory<D, T>,
         name: &str,
     ) -> Result<DirEntry, Error<D::Error>> {
         match &volume.volume_type {
@@ -351,7 +351,7 @@ where
     pub fn iterate_dir<F>(
         &self,
         volume: &Volume,
-        dir: &Directory,
+        dir: &Directory<D, T>,
         func: F,
     ) -> Result<(), Error<D::Error>>
     where
@@ -367,7 +367,7 @@ where
     pub fn open_file_in_dir<'a>(
         &'a self,
         volume: &'a Volume,
-        dir: &Directory,
+        dir: &Directory<D, T>,
         name: &str,
         mode: Mode,
     ) -> Result<File<'a, D, T>, Error<D::Error>> {
@@ -422,8 +422,11 @@ where
         let mut space = buffer.len();
         let mut read = 0;
         while space > 0 && !file.eof() {
-            let (block_idx, block_offset, block_avail, resume_from) =
-                self.find_data_on_disk(volume, file.get_current_cluster(), file.get_current_offset())?;
+            let (block_idx, block_offset, block_avail, resume_from) = self.find_data_on_disk(
+                volume,
+                file.get_current_cluster(),
+                file.get_current_offset(),
+            )?;
             file.set_current_cluster(resume_from.0, resume_from.1);
             let mut blocks = [Block::new()];
             self.block_device
@@ -444,7 +447,7 @@ where
     /// Close the given file handle. This should only be used by the `Drop`
     /// implementation on `File`, as the file handle will still exist after
     /// this function but will no longer work.
-    pub(crate) fn close_file_by_ref<'a>(&self, volume: &Volume, file: &mut File<'a, D, T>) -> Result<(), Error<D::Error>> {
+    pub(crate) fn close_file_by_ref<'a>(&self, volume: &Volume, file: &mut File<'a, D, T>) {
         let target = (volume.idx, file.get_starting_cluster());
         for d in self.open_files.borrow_mut().iter_mut() {
             if *d == target {
@@ -452,7 +455,6 @@ where
                 break;
             }
         }
-        Ok(())
     }
 
     /// This function turns `desired_offset` into an appropriate block to be
@@ -711,7 +713,7 @@ mod tests {
 
     #[test]
     fn partition0() {
-        let mut c = Controller::new(DummyBlockDevice, Clock);
+        let c = Controller::new(DummyBlockDevice, Clock);
         let v = c.get_volume(VolumeIdx(0)).unwrap();
         assert_eq!(
             v,

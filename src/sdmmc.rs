@@ -124,7 +124,10 @@ where
     }
 
     fn cs_high(&self) -> Result<(), Error> {
-        self.cs.borrow_mut().set_high().map_err(|_| Error::GpioError)
+        self.cs
+            .borrow_mut()
+            .set_high()
+            .map_err(|_| Error::GpioError)
     }
 
     fn cs_low(&self) -> Result<(), Error> {

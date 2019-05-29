@@ -120,7 +120,7 @@ fn main() {
         .map_err(Error::DeviceError)
         .unwrap();
     println!("lbd: {:?}", lbd);
-    let mut controller = Controller::new(lbd, Clock);
+    let controller = Controller::new(lbd, Clock);
     for i in 0..=3 {
         let volume = controller.get_volume(VolumeIdx(i));
         println!("volume {}: {:#?}", i, volume);
@@ -169,7 +169,7 @@ fn main() {
                     println!("\t\tFound: {:?}", x);
                 })
                 .unwrap();
-            controller.close_dir(&volume, test_dir);
+            drop(test_dir);
 
             // Checksum example file. We just sum the bytes, as a quick and dirty checksum.
             // We also read in a weird block size, just to exercise the offset calculation code.
@@ -189,7 +189,7 @@ fn main() {
             drop(f);
 
             assert!(controller.open_root_dir(&volume).is_err());
-            controller.close_dir(&volume, root_dir);
+            drop(root_dir);
             assert!(controller.open_root_dir(&volume).is_ok());
         }
     }

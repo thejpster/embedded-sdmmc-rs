@@ -77,7 +77,11 @@ pub struct Timestamp {
 pub struct Attributes(u8);
 
 /// Represents an open file on disk.
-pub struct File<'a, D, T> where D: crate::blockdevice::BlockDevice, T: TimeSource {
+pub struct File<'a, D, T>
+where
+    D: crate::blockdevice::BlockDevice,
+    T: TimeSource,
+{
     /// Our parent controller
     controller: &'a super::Controller<D, T>,
     /// Our parent volume
@@ -95,8 +99,15 @@ pub struct File<'a, D, T> where D: crate::blockdevice::BlockDevice, T: TimeSourc
 }
 
 /// Represents an open directory on disk.
-#[derive(Debug)]
-pub struct Directory {
+pub struct Directory<'a, D, T>
+where
+    D: crate::blockdevice::BlockDevice,
+    T: TimeSource,
+{
+    /// Our parent controller
+    controller: &'a super::Controller<D, T>,
+    /// Our parent volume
+    volume: &'a super::Volume,
     /// The starting point of the directory listing.
     pub(crate) cluster: Cluster,
 }
@@ -519,9 +530,19 @@ impl core::fmt::Debug for Attributes {
     }
 }
 
-impl<'a, T, D> File<'a, D, T> where D: crate::blockdevice::BlockDevice, T: TimeSource {
+impl<'a, T, D> File<'a, D, T>
+where
+    D: crate::blockdevice::BlockDevice,
+    T: TimeSource,
+{
     /// Create a new file handle.
-    pub(crate) fn new(controller: &'a super::Controller<D, T>, volume: &'a super::Volume, cluster: Cluster, length: u32, mode: Mode) -> File<'a, D, T> {
+    pub(crate) fn new(
+        controller: &'a super::Controller<D, T>,
+        volume: &'a super::Volume,
+        cluster: Cluster,
+        length: u32,
+        mode: Mode,
+    ) -> File<'a, D, T> {
         File {
             controller,
             volume,
@@ -608,16 +629,45 @@ impl<'a, T, D> File<'a, D, T> where D: crate::blockdevice::BlockDevice, T: TimeS
     }
 }
 
-impl<'a, D, T> Drop for File<'a, D, T> where D: crate::blockdevice::BlockDevice, T: TimeSource {
-    fn drop(&mut self) {
-        // TODO - is panic the best course of action here?
-        self.controller.close_file_by_ref(self.volume, self).expect("Failed to close file when handled dropped.");
+impl<'a, T, D> Directory<'a, D, T>
+where
+    D: crate::blockdevice::BlockDevice,
+    T: TimeSource,
+{
+    /// Create a new file handle.
+    pub(crate) fn new(
+        controller: &'a super::Controller<D, T>,
+        volume: &'a super::Volume,
+        cluster: Cluster,
+    ) -> Directory<'a, D, T> {
+        Directory {
+            controller,
+            volume,
+            cluster,
+        }
     }
 }
 
-impl Directory {}
+impl<'a, D, T> Drop for File<'a, D, T>
+where
+    D: crate::blockdevice::BlockDevice,
+    T: TimeSource,
+{
+    fn drop(&mut self) {
+        self.controller.close_file_by_ref(self.volume, self);
+    }
+}
 
-impl FilenameError {}
+impl<'a, D, T> Drop for Directory<'a, D, T>
+where
+    D: crate::blockdevice::BlockDevice,
+    T: TimeSource,
+{
+    fn drop(&mut self) {
+        // TODO - is panic the best course of action here?
+        self.controller.close_dir_by_ref(self.volume, self);
+    }
+}
 
 // ****************************************************************************
 //

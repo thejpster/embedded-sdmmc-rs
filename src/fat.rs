@@ -477,7 +477,7 @@ impl Fat16Volume {
     pub(crate) fn find_directory_entry<D, T>(
         &self,
         controller: &Controller<D, T>,
-        dir: &Directory,
+        dir: &Directory<D, T>,
         name: &str,
     ) -> Result<DirEntry, Error<D::Error>>
     where
@@ -521,7 +521,7 @@ impl Fat16Volume {
     pub(crate) fn iterate_dir<D, T, F>(
         &self,
         controller: &Controller<D, T>,
-        dir: &Directory,
+        dir: &Directory<D, T>,
         mut func: F,
     ) -> Result<(), Error<D::Error>>
     where
@@ -691,7 +691,7 @@ impl Fat32Volume {
     pub(crate) fn find_directory_entry<D, T>(
         &self,
         controller: &Controller<D, T>,
-        dir: &Directory,
+        dir: &Directory<D, T>,
         name: &str,
     ) -> Result<DirEntry, Error<D::Error>>
     where
@@ -728,7 +728,7 @@ impl Fat32Volume {
     pub(crate) fn iterate_dir<D, T, F>(
         &self,
         controller: &Controller<D, T>,
-        dir: &Directory,
+        dir: &Directory<D, T>,
         mut func: F,
     ) -> Result<(), Error<D::Error>>
     where
