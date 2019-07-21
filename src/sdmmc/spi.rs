@@ -5,12 +5,11 @@
 //! This is currently optimised for readability and debugability, not
 //! performance.
 
-use super::sdmmc_proto::*;
-use super::{Block, BlockCount, BlockDevice, BlockIdx};
+use crate::sdmmc_proto::*;
+use crate::{Block, BlockCount, BlockDevice, BlockIdx};
 use core::cell::UnsafeCell;
 use nb::block;
-
-const DEFAULT_DELAY_COUNT: u32 = 32_000;
+use crate::sdmmc::{Error, State, Delay, Transport};
 
 /// Represents an SD Card interface built from an SPI peripheral and a Chip
 /// Select pin. We need Chip Select to be separate so we can clock out some
@@ -25,78 +24,6 @@ where
     cs: UnsafeCell<CS>,
     card_type: CardType,
     state: State,
-}
-
-/// The possible errors `SdMmcSpi` can generate.
-#[derive(Debug, Copy, Clone)]
-pub enum Error {
-    /// We got an error from the SPI peripheral
-    Transport,
-    /// We failed to enable CRC checking on the SD card
-    CantEnableCRC,
-    /// We didn't get a response when reading data from the card
-    TimeoutReadBuffer,
-    /// We didn't get a response when waiting for the card to not be busy
-    TimeoutWaitNotBusy,
-    /// We didn't get a response when executing this command
-    TimeoutCommand(u8),
-    /// We didn't get a response when executing this application-specific command
-    TimeoutACommand(u8),
-    /// We got a bad response from Command 58
-    Cmd58Error,
-    /// We failed to read the Card Specific Data register
-    RegisterReadError,
-    /// We got a CRC mismatch (card gave us, we calculated)
-    CrcError(u16, u16),
-    /// Error reading from the card
-    ReadError,
-    /// Error writing to the card
-    WriteError,
-    /// Can't perform this operation with the card in this state
-    BadState,
-    /// Couldn't find the card
-    CardNotFound,
-}
-
-/// The possible states `SdMmcSpi` can be in.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum State {
-    NoInit,
-    Error,
-    Idle,
-}
-
-/// The different types of card we support.
-#[derive(Debug, Copy, Clone, PartialEq)]
-enum CardType {
-    SD1,
-    SD2,
-    SDHC,
-}
-
-/// A terrible hack for busy-waiting the CPU while we wait for the card to
-/// sort itself out.
-///
-/// @TODO replace this!
-struct Delay(u32);
-
-impl Delay {
-    fn new() -> Delay {
-        Delay(DEFAULT_DELAY_COUNT)
-    }
-
-    fn delay(&mut self, err: Error) -> Result<(), Error> {
-        if self.0 == 0 {
-            Err(err)
-        } else {
-            let dummy_var: u32 = 0;
-            for _ in 0..100 {
-                unsafe { core::ptr::read_volatile(&dummy_var) };
-            }
-            self.0 -= 1;
-            Ok(())
-        }
-    }
 }
 
 impl<SPI, CS> SdMmcSpi<SPI, CS>
@@ -129,94 +56,6 @@ where
     fn cs_low(&self) {
         let cs = unsafe { &mut *self.cs.get() };
         cs.set_low();
-    }
-
-    /// This routine must be performed with an SPI clock speed of around 100 - 400 kHz.
-    /// Afterwards you may increase the SPI clock speed.
-    pub fn init(&mut self) -> Result<(), Error> {
-        let f = |s: &mut Self| {
-            // Assume it hasn't worked
-            s.state = State::Error;
-            // Supply minimum of 74 clock cycles without CS asserted.
-            s.cs_high();
-            for _ in 0..10 {
-                s.send(0xFF)?;
-            }
-            // Assert CS
-            s.cs_low();
-            // Enter SPI mode
-            let mut attempts = 32;
-            while attempts > 0 {
-                match s.card_command(CMD0, 0) {
-                    Err(Error::TimeoutCommand(0)) => {
-                        // Try again?
-                        attempts -= 1;
-                    }
-                    Err(e) => {
-                        return Err(e);
-                    }
-                    Ok(R1_IDLE_STATE) => {
-                        break;
-                    }
-                    Ok(_) => {
-                        // Try again
-                    }
-                }
-            }
-            if attempts == 0 {
-                return Err(Error::CardNotFound);
-            }
-            // Enable CRC
-            if s.card_command(CMD59, 1)? != R1_IDLE_STATE {
-                return Err(Error::CantEnableCRC);
-            }
-            // Check card version
-            let mut delay = Delay::new();
-            loop {
-                if s.card_command(CMD8, 0x1AA)? == (R1_ILLEGAL_COMMAND | R1_IDLE_STATE) {
-                    s.card_type = CardType::SD1;
-                    break;
-                }
-                s.receive()?;
-                s.receive()?;
-                s.receive()?;
-                let status = s.receive()?;
-                if status == 0xAA {
-                    s.card_type = CardType::SD2;
-                    break;
-                }
-                delay.delay(Error::TimeoutCommand(CMD8))?;
-            }
-
-            let arg = match s.card_type {
-                CardType::SD1 => 0,
-                CardType::SD2 | CardType::SDHC => 0x4000_0000,
-            };
-
-            let mut delay = Delay::new();
-            while s.card_acmd(ACMD41, arg)? != R1_READY_STATE {
-                delay.delay(Error::TimeoutACommand(ACMD41))?;
-            }
-
-            if s.card_type == CardType::SD2 {
-                if s.card_command(CMD58, 0)? != 0 {
-                    return Err(Error::Cmd58Error);
-                }
-                if (s.receive()? & 0xC0) == 0xC0 {
-                    s.card_type = CardType::SDHC;
-                }
-                // Discard other three bytes
-                s.receive()?;
-                s.receive()?;
-                s.receive()?;
-            }
-            s.state = State::Idle;
-            Ok(())
-        };
-        let result = f(self);
-        self.cs_high();
-        let _ = self.receive();
-        result
     }
 
     /// De-init the card so it can't be used
@@ -310,59 +149,121 @@ where
         }
     }
 
-    /// Read an arbitrary number of bytes from the card. Always fills the
-    /// given buffer, so make sure it's the right size.
-    fn read_data(&self, buffer: &mut [u8]) -> Result<(), Error> {
-        // Get first non-FF byte.
+    /// Send one byte and receive one byte.
+    fn transfer(&self, out: u8) -> Result<u8, Error> {
+        let spi = unsafe { &mut *self.spi.get() };
+        block!(spi.send(out)).map_err(|_e| Error::Transport)?;
+        block!(spi.read()).map_err(|_e| Error::Transport)
+    }
+
+    /// Spin until the card returns 0xFF, or we spin too many times and
+    /// timeout.
+    fn wait_not_busy(&self) -> Result<(), Error> {
         let mut delay = Delay::new();
-        let status = loop {
+        loop {
             let s = self.receive()?;
-            if s != 0xFF {
-                break s;
+            if s == 0xFF {
+                break;
             }
-            delay.delay(Error::TimeoutReadBuffer)?;
-        };
-        if status != DATA_START_BLOCK {
-            return Err(Error::ReadError);
+            delay.delay(Error::TimeoutWaitNotBusy)?;
         }
-
-        for b in buffer.iter_mut() {
-            *b = self.receive()?;
-        }
-
-        let mut crc = u16::from(self.receive()?);
-        crc <<= 8;
-        crc |= u16::from(self.receive()?);
-
-        let calc_crc = crc16(buffer);
-        if crc != calc_crc {
-            return Err(Error::CrcError(crc, calc_crc));
-        }
-
         Ok(())
     }
+}
 
-    /// Write an arbitrary number of bytes to the card.
-    fn write_data(&self, token: u8, buffer: &[u8]) -> Result<(), Error> {
-        let calc_crc = crc16(buffer);
-        self.send(token)?;
-        for &b in buffer.iter() {
-            self.send(b)?;
-        }
-        self.send((calc_crc >> 16) as u8)?;
-        self.send(calc_crc as u8)?;
-        let status = self.receive()?;
-        if (status & DATA_RES_MASK) != DATA_RES_ACCEPTED {
-            Err(Error::WriteError)
-        } else {
+impl<SPI, CS> Transport for SdMmcSpi<SPI, CS>
+where
+    SPI: embedded_hal::spi::FullDuplex<u8>,
+    <SPI as embedded_hal::spi::FullDuplex<u8>>::Error: core::fmt::Debug,
+    CS: embedded_hal::digital::OutputPin,
+{
+
+    /// This routine must be performed with an SPI clock speed of around 100 - 400 kHz.
+    /// Afterwards you may increase the SPI clock speed.
+    fn init(&mut self) -> Result<(), Error> {
+        let f = |s: &mut Self| {
+            // Assume it hasn't worked
+            s.state = State::Error;
+            // Supply minimum of 74 clock cycles without CS asserted.
+            s.cs_high();
+            for _ in 0..10 {
+                s.send(0xFF)?;
+            }
+            // Assert CS
+            s.cs_low();
+            // Enter SPI mode
+            let mut attempts = 32;
+            while attempts > 0 {
+                match s.card_command(CMD0, 0) {
+                    Err(Error::TimeoutCommand(0)) => {
+                        // Try again?
+                        attempts -= 1;
+                    }
+                    Err(e) => {
+                        return Err(e);
+                    }
+                    Ok(R1_IDLE_STATE) => {
+                        break;
+                    }
+                    Ok(_) => {
+                        // Try again
+                    }
+                }
+            }
+            if attempts == 0 {
+                return Err(Error::CardNotFound);
+            }
+            // Enable CRC
+            if s.card_command(CMD59, 1)? != R1_IDLE_STATE {
+                return Err(Error::CantEnableCRC);
+            }
+            // Check card version
+            let mut delay = Delay::new();
+            loop {
+                if s.card_command(CMD8, 0x1AA)? == (R1_ILLEGAL_COMMAND | R1_IDLE_STATE) {
+                    s.card_type = CardType::SD1;
+                    break;
+                }
+                s.receive()?;
+                s.receive()?;
+                s.receive()?;
+                let status = s.receive()?;
+                if status == 0xAA {
+                    s.card_type = CardType::SD2;
+                    break;
+                }
+                delay.delay(Error::TimeoutCommand(CMD8))?;
+            }
+
+            let arg = match s.card_type {
+                CardType::SD1 => 0,
+                CardType::SD2 | CardType::SDHC => 0x4000_0000,
+            };
+
+            let mut delay = Delay::new();
+            while s.card_acmd(ACMD41, arg)? != R1_READY_STATE {
+                delay.delay(Error::TimeoutACommand(ACMD41))?;
+            }
+
+            if s.card_type == CardType::SD2 {
+                if s.card_command(CMD58, 0)? != 0 {
+                    return Err(Error::Cmd58Error);
+                }
+                if (s.receive()? & 0xC0) == 0xC0 {
+                    s.card_type = CardType::SDHC;
+                }
+                // Discard other three bytes
+                s.receive()?;
+                s.receive()?;
+                s.receive()?;
+            }
+            s.state = State::Idle;
             Ok(())
-        }
-    }
-
-    /// Perform an application-specific command.
-    fn card_acmd(&self, command: u8, arg: u32) -> Result<u8, Error> {
-        self.card_command(CMD55, 0)?;
-        self.card_command(command, arg)
+        };
+        let result = f(self);
+        self.cs_high();
+        let _ = self.receive();
+        result
     }
 
     /// Perform a command.
@@ -408,26 +309,6 @@ where
         Ok(())
     }
 
-    /// Send one byte and receive one byte.
-    fn transfer(&self, out: u8) -> Result<u8, Error> {
-        let spi = unsafe { &mut *self.spi.get() };
-        block!(spi.send(out)).map_err(|_e| Error::Transport)?;
-        block!(spi.read()).map_err(|_e| Error::Transport)
-    }
-
-    /// Spin until the card returns 0xFF, or we spin too many times and
-    /// timeout.
-    fn wait_not_busy(&self) -> Result<(), Error> {
-        let mut delay = Delay::new();
-        loop {
-            let s = self.receive()?;
-            if s == 0xFF {
-                break;
-            }
-            delay.delay(Error::TimeoutWaitNotBusy)?;
-        }
-        Ok(())
-    }
 }
 
 impl<SPI, CS> BlockDevice for SdMmcSpi<SPI, CS>

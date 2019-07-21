@@ -84,7 +84,7 @@ pub const ERROR_FUNCTION_NOT_SUPPORTED: u8 = 0x64;
 //==============================================================================
 
 /// Types of SD card supported
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 #[repr(u8)]
 pub enum CardType {
     SD1 = 1,
