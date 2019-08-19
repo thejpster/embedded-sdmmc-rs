@@ -77,7 +77,7 @@ pub struct Timestamp {
 pub struct Attributes(u8);
 
 /// Represents an open file on disk.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct File {
     /// The starting point of the file.
     pub(crate) starting_cluster: Cluster,
@@ -92,7 +92,7 @@ pub struct File {
 }
 
 /// Represents an open directory on disk.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Directory {
     /// The starting point of the directory listing.
     pub(crate) cluster: Cluster,
@@ -568,8 +568,8 @@ impl File {
 
     /// Seek to a new position in the file, relative to the current position.
     pub fn seek_from_current(&mut self, offset: i32) -> Result<(), ()> {
-        let new_offset = self.current_offset as i64 + offset as i64;
-        if new_offset >= 0 && new_offset <= self.length as i64 {
+        let new_offset = i64::from(self.current_offset) + i64::from(offset);
+        if new_offset >= 0 && new_offset <= i64::from(self.length) {
             self.current_offset = new_offset as u32;
             Ok(())
         } else {

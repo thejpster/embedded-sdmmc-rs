@@ -138,13 +138,13 @@ fn main() {
                 FILE_TO_PRINT,
                 controller.find_directory_entry(&volume, &root_dir, FILE_TO_PRINT)
             );
-            let mut f = controller
+            let f = controller
                 .open_file_in_dir(&volume, &root_dir, FILE_TO_PRINT, Mode::ReadOnly)
                 .unwrap();
             println!("FILE STARTS:");
-            while !f.eof() {
+            while !controller.eof(&f) {
                 let mut buffer = [0u8; 32];
-                let num_read = controller.read(&volume, &mut f, &mut buffer).unwrap();
+                let num_read = controller.read(&volume, &f, &mut buffer).unwrap();
                 for b in &buffer[0..num_read] {
                     if *b == 10 {
                         print!("\\n");
@@ -157,7 +157,7 @@ fn main() {
             assert!(controller
                 .open_file_in_dir(&volume, &root_dir, FILE_TO_PRINT, Mode::ReadOnly)
                 .is_err());
-            controller.close_file(&volume, f).unwrap();
+            controller.close_file(f).unwrap();
 
             let test_dir = controller.open_dir(&volume, &root_dir, "TEST").unwrap();
             // Check we can't open it twice
@@ -169,27 +169,31 @@ fn main() {
                     println!("\t\tFound: {:?}", x);
                 })
                 .unwrap();
-            controller.close_dir(&volume, test_dir);
+            controller.close_dir(test_dir);
 
             // Checksum example file. We just sum the bytes, as a quick and dirty checksum.
             // We also read in a weird block size, just to exercise the offset calculation code.
             let mut f = controller
                 .open_file_in_dir(&volume, &root_dir, FILE_TO_CHECKSUM, Mode::ReadOnly)
                 .unwrap();
-            println!("Checksuming {} bytes of {}", f.length(), FILE_TO_CHECKSUM);
+            println!(
+                "Checksuming {} bytes of {}",
+                controller.length(&f),
+                FILE_TO_CHECKSUM
+            );
             let mut csum = 0u32;
-            while !f.eof() {
+            while !controller.eof(&f) {
                 let mut buffer = [0u8; 2047];
                 let num_read = controller.read(&volume, &mut f, &mut buffer).unwrap();
                 for b in &buffer[0..num_read] {
                     csum += u32::from(*b);
                 }
             }
-            println!("Checksum over {} bytes: {}", f.length(), csum);
-            controller.close_file(&volume, f).unwrap();
+            println!("Checksum over {} bytes: {}", controller.length(&f), csum);
+            controller.close_file(f).unwrap();
 
             assert!(controller.open_root_dir(&volume).is_err());
-            controller.close_dir(&volume, root_dir);
+            controller.close_dir(root_dir);
             assert!(controller.open_root_dir(&volume).is_ok());
         }
     }

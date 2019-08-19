@@ -198,7 +198,7 @@ impl<'a> Bpb<'a> {
     // Magic functions that get the right FAT16/FAT32 result
 
     pub fn fat_size(&self) -> u32 {
-        let result = self.fat_size16() as u32;
+        let result = u32::from(self.fat_size16());
         if result != 0 {
             result
         } else {
@@ -207,7 +207,7 @@ impl<'a> Bpb<'a> {
     }
 
     pub fn total_blocks(&self) -> u32 {
-        let result = self.total_blocks16() as u32;
+        let result = u32::from(self.total_blocks16());
         if result != 0 {
             result
         } else {
@@ -289,32 +289,28 @@ impl<'a> OnDiskDirEntry<'a> {
             let mut buffer = [' '; 13];
             let is_start = (self.data[0] & 0x40) != 0;
             let sequence = self.data[0] & 0x1F;
-            buffer[0] =
-                core::char::from_u32(LittleEndian::read_u16(&self.data[1..=2]) as u32).unwrap();
-            buffer[1] =
-                core::char::from_u32(LittleEndian::read_u16(&self.data[3..=4]) as u32).unwrap();
-            buffer[2] =
-                core::char::from_u32(LittleEndian::read_u16(&self.data[5..=6]) as u32).unwrap();
-            buffer[3] =
-                core::char::from_u32(LittleEndian::read_u16(&self.data[7..=8]) as u32).unwrap();
+            buffer[0] = core::char::from_u32(u32::from(LittleEndian::read_u16(&self.data[1..=2])))?;
+            buffer[1] = core::char::from_u32(u32::from(LittleEndian::read_u16(&self.data[3..=4])))?;
+            buffer[2] = core::char::from_u32(u32::from(LittleEndian::read_u16(&self.data[5..=6])))?;
+            buffer[3] = core::char::from_u32(u32::from(LittleEndian::read_u16(&self.data[7..=8])))?;
             buffer[4] =
-                core::char::from_u32(LittleEndian::read_u16(&self.data[9..=10]) as u32).unwrap();
+                core::char::from_u32(u32::from(LittleEndian::read_u16(&self.data[9..=10])))?;
             buffer[5] =
-                core::char::from_u32(LittleEndian::read_u16(&self.data[14..=15]) as u32).unwrap();
+                core::char::from_u32(u32::from(LittleEndian::read_u16(&self.data[14..=15])))?;
             buffer[6] =
-                core::char::from_u32(LittleEndian::read_u16(&self.data[16..=17]) as u32).unwrap();
+                core::char::from_u32(u32::from(LittleEndian::read_u16(&self.data[16..=17])))?;
             buffer[7] =
-                core::char::from_u32(LittleEndian::read_u16(&self.data[18..=19]) as u32).unwrap();
+                core::char::from_u32(u32::from(LittleEndian::read_u16(&self.data[18..=19])))?;
             buffer[8] =
-                core::char::from_u32(LittleEndian::read_u16(&self.data[20..=21]) as u32).unwrap();
+                core::char::from_u32(u32::from(LittleEndian::read_u16(&self.data[20..=21])))?;
             buffer[9] =
-                core::char::from_u32(LittleEndian::read_u16(&self.data[22..=23]) as u32).unwrap();
+                core::char::from_u32(u32::from(LittleEndian::read_u16(&self.data[22..=23])))?;
             buffer[10] =
-                core::char::from_u32(LittleEndian::read_u16(&self.data[24..=25]) as u32).unwrap();
+                core::char::from_u32(u32::from(LittleEndian::read_u16(&self.data[24..=25])))?;
             buffer[11] =
-                core::char::from_u32(LittleEndian::read_u16(&self.data[28..=29]) as u32).unwrap();
+                core::char::from_u32(u32::from(LittleEndian::read_u16(&self.data[28..=29])))?;
             buffer[12] =
-                core::char::from_u32(LittleEndian::read_u16(&self.data[30..=31]) as u32).unwrap();
+                core::char::from_u32(u32::from(LittleEndian::read_u16(&self.data[30..=31])))?;
             Some((is_start, sequence, buffer))
         } else {
             None
@@ -327,12 +323,12 @@ impl<'a> OnDiskDirEntry<'a> {
 
     fn first_cluster_fat32(&self) -> Cluster {
         let cluster_no =
-            ((self.first_cluster_hi() as u32) << 16) | (self.first_cluster_lo() as u32);
+            (u32::from(self.first_cluster_hi()) << 16) | u32::from(self.first_cluster_lo());
         Cluster(cluster_no)
     }
 
     fn first_cluster_fat16(&self) -> Cluster {
-        let cluster_no = self.first_cluster_lo() as u32;
+        let cluster_no = u32::from(self.first_cluster_lo());
         Cluster(cluster_no)
     }
 
@@ -490,7 +486,7 @@ impl Fat16Volume {
         // TODO track actual directory size
         let dir_size = match dir.cluster {
             Cluster::ROOT_DIR => BlockCount(
-                ((self.root_entries_count as u32 * 32) + (Block::LEN as u32 - 1))
+                ((u32::from(self.root_entries_count) * 32) + (Block::LEN as u32 - 1))
                     / Block::LEN as u32,
             ),
             _ => BlockCount(u32::from(self.blocks_per_cluster)),
@@ -533,7 +529,7 @@ impl Fat16Volume {
         // TODO track actual directory size
         let dir_size = match dir.cluster {
             Cluster::ROOT_DIR => BlockCount(
-                ((self.root_entries_count as u32 * 32) + (Block::LEN as u32 - 1))
+                ((u32::from(self.root_entries_count) * 32) + (Block::LEN as u32 - 1))
                     / Block::LEN as u32,
             ),
             _ => BlockCount(u32::from(self.blocks_per_cluster)),
@@ -663,7 +659,7 @@ impl Fat32Volume {
             }
             f => {
                 // Seems legit
-                Ok(Cluster(u32::from(f)))
+                Ok(Cluster(f))
             }
         }
     }

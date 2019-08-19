@@ -199,7 +199,7 @@ impl core::iter::Iterator for BlockIter {
             None
         } else {
             let this = self.current;
-            self.current = self.current + BlockCount(1);
+            self.current += BlockCount(1);
             Some(this)
         }
     }
