@@ -4,7 +4,7 @@
 
 use crate::blockdevice::BlockCount;
 use crate::{
-    Attributes, Block, BlockDevice, BlockIdx, Cluster, Controller, DirEntry, Directory, Error,
+    Attributes, Block, BlockDevice, BlockIdx, Cluster, Controller, DirEntry, Error, OpenDirState,
     ShortFileName, TimeSource, Timestamp, VolumeType,
 };
 use byteorder::{ByteOrder, LittleEndian};
@@ -473,7 +473,7 @@ impl Fat16Volume {
     pub(crate) fn find_directory_entry<D, T>(
         &self,
         controller: &mut Controller<D, T>,
-        dir: &Directory,
+        dir: &OpenDirState,
         name: &str,
     ) -> Result<DirEntry, Error<D::Error>>
     where
@@ -517,7 +517,7 @@ impl Fat16Volume {
     pub(crate) fn iterate_dir<D, T, F>(
         &self,
         controller: &Controller<D, T>,
-        dir: &Directory,
+        dir: &OpenDirState,
         mut func: F,
     ) -> Result<(), Error<D::Error>>
     where
@@ -687,7 +687,7 @@ impl Fat32Volume {
     pub(crate) fn find_directory_entry<D, T>(
         &self,
         controller: &mut Controller<D, T>,
-        dir: &Directory,
+        dir: &OpenDirState,
         name: &str,
     ) -> Result<DirEntry, Error<D::Error>>
     where
@@ -724,7 +724,7 @@ impl Fat32Volume {
     pub(crate) fn iterate_dir<D, T, F>(
         &self,
         controller: &Controller<D, T>,
-        dir: &Directory,
+        dir: &OpenDirState,
         mut func: F,
     ) -> Result<(), Error<D::Error>>
     where

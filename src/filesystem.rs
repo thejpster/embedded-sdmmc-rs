@@ -78,7 +78,7 @@ pub struct Attributes(u8);
 
 /// Represents an open file on disk.
 #[derive(Debug, PartialEq)]
-pub struct File {
+pub struct OpenFileState {
     /// The starting point of the file.
     pub(crate) starting_cluster: Cluster,
     /// The current cluster, and how many bytes that short-cuts us
@@ -93,7 +93,7 @@ pub struct File {
 
 /// Represents an open directory on disk.
 #[derive(Debug, PartialEq, Clone)]
-pub struct Directory {
+pub struct OpenDirState {
     /// The starting point of the directory listing.
     pub(crate) cluster: Cluster,
 }
@@ -516,10 +516,10 @@ impl core::fmt::Debug for Attributes {
     }
 }
 
-impl File {
+impl OpenFileState {
     /// Create a new file handle.
-    pub(crate) fn new(cluster: Cluster, length: u32, mode: Mode) -> File {
-        File {
+    pub(crate) fn new(cluster: Cluster, length: u32, mode: Mode) -> OpenFileState {
+        OpenFileState {
             starting_cluster: cluster,
             current_cluster: (0, cluster),
             mode,
@@ -583,7 +583,7 @@ impl File {
     }
 }
 
-impl Directory {}
+impl OpenDirState {}
 
 impl FilenameError {}
 

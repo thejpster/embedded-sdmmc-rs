@@ -29,8 +29,7 @@ pub use crate::filesystem::{
 pub use crate::sdmmc::Error as SdMmcError;
 pub use crate::sdmmc::SdMmcSpi;
 
-use crate::filesystem::Directory;
-use crate::filesystem::File;
+use crate::filesystem::{OpenDirState, OpenFileState};
 
 // ****************************************************************************
 //
@@ -99,8 +98,8 @@ where
 {
     block_device: D,
     timesource: T,
-    open_dirs: [Option<(VolumeIdx, Directory)>; MAX_OPEN_DIRS],
-    open_files: [Option<(VolumeIdx, File)>; MAX_OPEN_DIRS],
+    open_dirs: [Option<(VolumeIdx, OpenDirState)>; MAX_OPEN_DIRS],
+    open_files: [Option<(VolumeIdx, OpenFileState)>; MAX_OPEN_DIRS],
 }
 
 /// Represents a partition with a filesystem within it.
@@ -278,7 +277,7 @@ where
                 }
                 Some((
                     v,
-                    Directory {
+                    OpenDirState {
                         cluster: Cluster::ROOT_DIR,
                     },
                 )) if *v == volume.idx => {
@@ -294,7 +293,7 @@ where
         // Remember this open directory
         self.open_dirs[open_dirs_row] = Some((
             volume.idx,
-            Directory {
+            OpenDirState {
                 cluster: Cluster::ROOT_DIR,
             },
         ));
@@ -353,7 +352,7 @@ where
             return Err(Error::OpenedDirAsFile);
         }
 
-        let directory = Directory {
+        let directory = OpenDirState {
             cluster: dir_entry.cluster,
         };
 
@@ -469,7 +468,7 @@ where
             .ok_or(Error::TooManyOpenFiles)?;
         *f = Some((
             volume.idx,
-            File {
+            OpenFileState {
                 starting_cluster: dir_entry.cluster,
                 current_cluster: (0, dir_entry.cluster),
                 current_offset: 0,
