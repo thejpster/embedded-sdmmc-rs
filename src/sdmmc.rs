@@ -153,7 +153,7 @@ where
             // Enter SPI mode
             let mut attempts = 32;
             while attempts > 0 {
-                match s.card_command(CMD0, 0) {
+                match s.card_command(CMD0_GO_IDLE_STATE, 0) {
                     Err(Error::TimeoutCommand(0)) => {
                         // Try again?
                         attempts -= 1;
@@ -173,13 +173,14 @@ where
                 return Err(Error::CardNotFound);
             }
             // Enable CRC
-            if s.card_command(CMD59, 1)? != R1_IDLE_STATE {
+            if s.card_command(CMD59_CRC_ON_OFF, 1)? != R1_IDLE_STATE {
                 return Err(Error::CantEnableCRC);
             }
             // Check card version
             let mut delay = Delay::new();
             loop {
-                if s.card_command(CMD8, 0x1AA)? == (R1_ILLEGAL_COMMAND | R1_IDLE_STATE) {
+                if s.card_command(CMD8_SEND_IF_COND, 0x1AA)? == (R1_ILLEGAL_COMMAND | R1_IDLE_STATE)
+                {
                     s.card_type = CardType::SD1;
                     break;
                 }
@@ -191,7 +192,7 @@ where
                     s.card_type = CardType::SD2;
                     break;
                 }
-                delay.delay(Error::TimeoutCommand(CMD8))?;
+                delay.delay(Error::TimeoutCommand(CMD8_SEND_IF_COND))?;
             }
 
             let arg = match s.card_type {
@@ -200,12 +201,12 @@ where
             };
 
             let mut delay = Delay::new();
-            while s.card_acmd(ACMD41, arg)? != R1_READY_STATE {
-                delay.delay(Error::TimeoutACommand(ACMD41))?;
+            while s.card_acmd(ACMD41_SD_SEND_OP_COND, arg)? != R1_READY_STATE {
+                delay.delay(Error::TimeoutACommand(ACMD41_SD_SEND_OP_COND))?;
             }
 
             if s.card_type == CardType::SD2 {
-                if s.card_command(CMD58, 0)? != 0 {
+                if s.card_command(CMD58_READ_OCR, 0)? != 0 {
                     return Err(Error::Cmd58Error);
                 }
                 if (s.receive()? & 0xC0) == 0xC0 {
@@ -299,7 +300,7 @@ where
         match self.card_type {
             CardType::SD1 => {
                 let mut csd = CsdV1::new();
-                if self.card_command(CMD9, 0)? != 0 {
+                if self.card_command(CMD9_SEND_CSD, 0)? != 0 {
                     return Err(Error::RegisterReadError);
                 }
                 self.read_data(&mut csd.data)?;
@@ -307,7 +308,7 @@ where
             }
             CardType::SD2 | CardType::SDHC => {
                 let mut csd = CsdV2::new();
-                if self.card_command(CMD9, 0)? != 0 {
+                if self.card_command(CMD9_SEND_CSD, 0)? != 0 {
                     return Err(Error::RegisterReadError);
                 }
                 self.read_data(&mut csd.data)?;
@@ -367,7 +368,7 @@ where
 
     /// Perform an application-specific command.
     fn card_acmd(&self, command: u8, arg: u32) -> Result<u8, Error> {
-        self.card_command(CMD55, 0)?;
+        self.card_command(CMD55_APP_CMD, 0)?;
         self.card_command(command, arg)
     }
 
@@ -389,7 +390,7 @@ where
         }
 
         // skip stuff byte for stop read
-        if command == CMD12 {
+        if command == CMD12_STOP_TRANSMISSION {
             let _result = self.receive()?;
         }
 
@@ -459,16 +460,16 @@ where
         self.with_chip_select(|s| {
             if blocks.len() == 1 {
                 // Start a single-block read
-                s.card_command(CMD17, start_idx)?;
+                s.card_command(CMD17_READ_SINGLE_BLOCK, start_idx)?;
                 s.read_data(&mut blocks[0].contents)?;
             } else {
                 // Start a multi-block read
-                s.card_command(CMD18, start_idx)?;
+                s.card_command(CMD18_READ_MULTIPLE_BLOCK, start_idx)?;
                 for block in blocks.iter_mut() {
                     s.read_data(&mut block.contents)?;
                 }
                 // Stop the read
-                s.card_command(CMD12, 0)?;
+                s.card_command(CMD12_STOP_TRANSMISSION, 0)?;
             }
             Ok(())
         })
@@ -484,10 +485,10 @@ where
         self.with_chip_select_mut(|s| {
             if blocks.len() == 1 {
                 // Start a single-block write
-                s.card_command(CMD24, start_idx)?;
+                s.card_command(CMD24_WRITE_BLOCK, start_idx)?;
                 s.write_data(DATA_START_BLOCK, &blocks[0].contents)?;
                 s.wait_not_busy()?;
-                if s.card_command(CMD13, 0)? != 0x00 {
+                if s.card_command(CMD13_SEND_STATUS, 0)? != 0x00 {
                     return Err(Error::WriteError);
                 }
                 if s.receive()? != 0x00 {
@@ -495,7 +496,7 @@ where
                 }
             } else {
                 // Start a multi-block write
-                s.card_command(CMD25, start_idx)?;
+                s.card_command(CMD25_WRITE_MULTIPLE_BLOCK, start_idx)?;
                 for block in blocks.iter() {
                     s.wait_not_busy()?;
                     s.write_data(WRITE_MULTIPLE_TOKEN, &block.contents)?;

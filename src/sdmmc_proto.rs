@@ -37,32 +37,32 @@ pub const ERROR_OK: u8 = 0x00;
 // SD Card Commands
 
 /// GO_IDLE_STATE - init card in spi mode if CS low
-pub const CMD0: u8 = 0x00;
+pub const CMD0_GO_IDLE_STATE: u8 = 0;
 /// SEND_IF_COND - verify SD Memory Card interface operating condition.*/
-pub const CMD8: u8 = 0x08;
+pub const CMD8_SEND_IF_COND: u8 = 8;
 /// SEND_CSD - read the Card Specific Data (CSD register)
-pub const CMD9: u8 = 0x09;
+pub const CMD9_SEND_CSD: u8 = 9;
 /// STOP_TRANSMISSION - end multiple block read sequence
-pub const CMD12: u8 = 0x0C;
+pub const CMD12_STOP_TRANSMISSION: u8 = 12;
 /// SEND_STATUS - read the card status register
-pub const CMD13: u8 = 0x0D;
+pub const CMD13_SEND_STATUS: u8 = 13;
 /// READ_SINGLE_BLOCK - read a single data block from the card
-pub const CMD17: u8 = 0x11;
+pub const CMD17_READ_SINGLE_BLOCK: u8 = 17;
 /// READ_MULTIPLE_BLOCK - read a multiple data blocks from the card
-pub const CMD18: u8 = 0x12;
+pub const CMD18_READ_MULTIPLE_BLOCK: u8 = 18;
 /// WRITE_BLOCK - write a single data block to the card
-pub const CMD24: u8 = 0x18;
+pub const CMD24_WRITE_BLOCK: u8 = 24;
 /// WRITE_MULTIPLE_BLOCK - write blocks of data until a STOP_TRANSMISSION
-pub const CMD25: u8 = 0x19;
+pub const CMD25_WRITE_MULTIPLE_BLOCK: u8 = 25;
 /// APP_CMD - escape for application specific command
-pub const CMD55: u8 = 0x37;
+pub const CMD55_APP_CMD: u8 = 55;
 /// READ_OCR - read the OCR register of a card
-pub const CMD58: u8 = 0x3A;
+pub const CMD58_READ_OCR: u8 = 58;
 /// CRC_ON_OFF - enable or disable CRC checking
-pub const CMD59: u8 = 0x3B;
-/// SD_SEND_OP_COMD - Sends host capacity support information and activates
+pub const CMD59_CRC_ON_OFF: u8 = 59;
+/// SD_SEND_OP_COND - Sends host capacity support information and activates
 /// the card's initialization process
-pub const ACMD41: u8 = 0x29;
+pub const ACMD41_SD_SEND_OP_COND: u8 = 41;
 
 //==============================================================================
 
@@ -89,6 +89,9 @@ pub const DATA_RES_MASK: u8 = 0x1F;
 
 /// write data accepted token
 pub const DATA_RES_ACCEPTED: u8 = 0x05;
+
+/// A test pattern to use with CMD8_SEND_IF_COND
+pub const SD_CHECK_PATTERN: u32 = 0x0000_01AA;
 
 /// Card Specific Data, version 1
 #[derive(Default)]
