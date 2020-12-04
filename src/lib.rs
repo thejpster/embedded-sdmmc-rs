@@ -68,7 +68,6 @@
 #[macro_use]
 extern crate hex_literal;
 
-use byteorder::{ByteOrder, LittleEndian};
 use core::convert::TryFrom;
 use log::debug;
 
@@ -282,36 +281,25 @@ where
             let block = &blocks[0];
             // We only support Master Boot Record (MBR) partitioned cards, not
             // GUID Partition Table (GPT)
-            if LittleEndian::read_u16(&block[FOOTER_START..FOOTER_START + 2]) != FOOTER_VALUE {
+            if u16::from_le_bytes([block[FOOTER_START], block[FOOTER_START + 1]]) != FOOTER_VALUE {
                 return Err(Error::FormatError("Invalid MBR signature"));
             }
-            let partition = match volume_idx {
-                VolumeIdx(0) => {
-                    &block[PARTITION1_START..(PARTITION1_START + PARTITION_INFO_LENGTH)]
-                }
-                VolumeIdx(1) => {
-                    &block[PARTITION2_START..(PARTITION2_START + PARTITION_INFO_LENGTH)]
-                }
-                VolumeIdx(2) => {
-                    &block[PARTITION3_START..(PARTITION3_START + PARTITION_INFO_LENGTH)]
-                }
-                VolumeIdx(3) => {
-                    &block[PARTITION4_START..(PARTITION4_START + PARTITION_INFO_LENGTH)]
-                }
-                _ => {
-                    return Err(Error::NoSuchVolume);
-                }
+            let partition_start = match volume_idx {
+                VolumeIdx(0) => PARTITION1_START,
+                VolumeIdx(1) => PARTITION2_START,
+                VolumeIdx(2) => PARTITION3_START,
+                VolumeIdx(3) => PARTITION4_START,
+                _ => return Err(Error::NoSuchVolume),
             };
+            let partition = &block[partition_start..(partition_start + PARTITION_INFO_LENGTH)];
             // Only 0x80 and 0x00 are valid (bootable, and non-bootable)
             if (partition[PARTITION_INFO_STATUS_INDEX] & 0x7F) != 0x00 {
                 return Err(Error::FormatError("Invalid partition status"));
             }
-            let lba_start = LittleEndian::read_u32(
-                &partition[PARTITION_INFO_LBA_START_INDEX..(PARTITION_INFO_LBA_START_INDEX + 4)],
-            );
-            let num_blocks = LittleEndian::read_u32(
-                &partition[PARTITION_INFO_NUM_BLOCKS_INDEX..(PARTITION_INFO_NUM_BLOCKS_INDEX + 4)],
-            );
+            let pointer = &partition[PARTITION_INFO_LBA_START_INDEX] as *const _ as *const u32;
+            let lba_start = u32::from_le(unsafe { *pointer });
+            let pointer = &partition[PARTITION_INFO_NUM_BLOCKS_INDEX] as *const _ as *const u32;
+            let num_blocks = u32::from_le(unsafe { *pointer });
             (
                 partition[PARTITION_INFO_TYPE_INDEX],
                 BlockIdx(lba_start),

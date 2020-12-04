@@ -45,14 +45,19 @@ macro_rules! define_field {
     ($name:ident, u16, $offset:expr) => {
         /// Get the value from the $name field
         pub fn $name(&self) -> u16 {
-            LittleEndian::read_u16(&self.data[$offset..$offset+2])
+            u16::from_le_bytes([self.data[$offset], self.data[$offset + 1]])
         }
     };
 
     ($name:ident, u32, $offset:expr) => {
         /// Get the $name field
         pub fn $name(&self) -> u32 {
-            LittleEndian::read_u32(&self.data[$offset..$offset+4])
+            u32::from_le_bytes([
+                self.data[$offset],
+                self.data[$offset + 1],
+                self.data[$offset + 2],
+                self.data[$offset + 3]
+            ])
         }
     };
 }
