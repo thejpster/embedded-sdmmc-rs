@@ -17,6 +17,8 @@
 //! # struct DummyCsPin;
 //! # struct DummyUart;
 //! # struct DummyTimeSource;
+//! # impl embedded_hal::blocking::spi::write::Default<u8> for DummySpi {}
+//! # impl embedded_hal::blocking::spi::transfer::Default<u8> for DummySpi {}
 //! # impl embedded_hal::spi::FullDuplex<u8> for  DummySpi {
 //! #   type Error = ();
 //! #   fn read(&mut self) -> nb::Result<u8, ()> { Ok(0) }
@@ -36,6 +38,7 @@
 //! # let mut sdmmc_spi = DummySpi;
 //! # let mut sdmmc_cs = DummyCsPin;
 //! # let time_source = DummyTimeSource;
+//! use embedded_sdmmc::sdmmc::Transport;
 //! let mut cont = embedded_sdmmc::Controller::new(embedded_sdmmc::SdMmcSpi::new(sdmmc_spi, sdmmc_cs), time_source);
 //! write!(uart, "Init SD card...").unwrap();
 //! match cont.device().init() {
