@@ -19,12 +19,12 @@
 //! # struct DummyTimeSource;
 //! # impl embedded_hal::blocking::spi::Transfer<u8> for  DummySpi {
 //! #   type Error = ();
-//! #   fn transfer<'w>(&mut self, data: &'w mut [u8]) -> Result<&'w [u8], ()> { Ok(&[0]) }
+//! #   fn try_transfer<'w>(&mut self, data: &'w mut [u8]) -> Result<&'w [u8], ()> { Ok(&[0]) }
 //! # }
-//! # impl embedded_hal::digital::v2::OutputPin for DummyCsPin {
+//! # impl embedded_hal::digital::OutputPin for DummyCsPin {
 //! #   type Error = ();
-//! #   fn set_low(&mut self) -> Result<(), ()> { Ok(()) }
-//! #   fn set_high(&mut self) -> Result<(), ()> { Ok(()) }
+//! #   fn try_set_low(&mut self) -> Result<(), ()> { Ok(()) }
+//! #   fn try_set_high(&mut self) -> Result<(), ()> { Ok(()) }
 //! # }
 //! # impl embedded_sdmmc::TimeSource for DummyTimeSource {
 //! #   fn get_timestamp(&self) -> embedded_sdmmc::Timestamp { embedded_sdmmc::Timestamp::from_fat(0, 0) }

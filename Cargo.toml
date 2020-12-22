@@ -11,7 +11,7 @@ edition = "2018"
 readme = "README.md"
 
 [dependencies]
-embedded-hal = "0.2.3"
+embedded-hal = "1.0.0-alpha.4"
 byteorder = { version = "1", default-features = false }
 log = "0.4"
 
